@@ -1,22 +1,22 @@
-# Сборка и «тихий» запуск — пошаговая инструкция
+# Build and Stealth Launch Instructions
 
 ---
 
-## 1. Способы тихого запуска (без сборки)
+## 1. Stealth Launch Methods (Without Building)
 
-### Вариант A — VBS-лаунчер (рекомендуется)
+### Option A — VBS Launcher (Recommended)
 
-Двойной клик по `launch.vbs`. Всё. Никакой консоли, никакого мелькания.
+Double-click `launch.vbs`. That's it. No console window, no flashing.
 
-Для автозапуска при входе в Windows:
-1. `Win+R` → `shell:startup`
-2. Скопировать ярлык на `launch.vbs` в открывшуюся папку
+For auto-start on Windows login:
+1. Press `Win+R` → type `shell:startup`
+2. Copy a shortcut of `launch.vbs` into the opened folder.
 
-### Вариант B — BAT-файл
+### Option B — BAT File
 
-Двойной клик по `start.bat` — консоль мелькнёт на долю секунды и закроется.
+Double-click `start.bat` — a console window will flash for a fraction of a second and close.
 
-### Вариант C — PowerShell (one-liner)
+### Option C — PowerShell (One-liner)
 
 ```powershell
 Start-Process pythonw.exe -ArgumentList "C:\path\to\sticky_note.py" -WindowStyle Hidden
@@ -24,15 +24,15 @@ Start-Process pythonw.exe -ArgumentList "C:\path\to\sticky_note.py" -WindowStyle
 
 ---
 
-## 2. Сборка в EXE через PyInstaller (максимальная скрытность)
+## 2. Building an EXE via PyInstaller (Maximum Stealth)
 
-### Установка PyInstaller
+### Install PyInstaller
 
 ```bash
 pip install pyinstaller
 ```
 
-### Команда сборки
+### Build Command
 
 ```bash
 pyinstaller ^
@@ -45,24 +45,24 @@ pyinstaller ^
   sticky_note.py
 ```
 
-**Что это делает:**
-- `--name "RuntimeBroker"` — процесс в Диспетчере задач показывает `RuntimeBroker.exe`
-- `--noconsole` — без консоли
-- `--onefile` — один .exe файл
-- `--icon=NONE` — стандартная иконка (не Python)
-- `--add-data "notes;notes"` — включить папку заметок
+**What this does:**
+- `--name "RuntimeBroker"` — The process shows up as `RuntimeBroker.exe` in Task Manager.
+- `--noconsole` — Runs without a command prompt.
+- `--onefile` — Packages everything into a single `.exe` file.
+- `--icon=NONE` — Uses a standard Windows icon instead of the Python logo.
+- `--add-data "notes;notes"` — Includes the notes directory.
 
-### Альтернативные имена процесса
+### Alternative Process Names
 
-| Имя | Описание |
-|-----|----------|
-| `RuntimeBroker` | Системный процесс Windows (безобидно) |
-| `SearchUI` | Поиск Windows |
-| `SecurityHealthSystray` | Центр безопасности |
-| `TextInputHost` | Ввод текста |
-| `SettingSyncHost` | Синхронизация настроек |
+| Name | Description |
+|------|-------------|
+| `RuntimeBroker` | Windows system process (harmless) |
+| `SearchUI` | Windows Search |
+| `SecurityHealthSystray` | Security Center |
+| `TextInputHost` | Text Input |
+| `SettingSyncHost` | Settings Sync |
 
-### С системной иконкой
+### With System Icon
 
 ```bash
 pyinstaller ^
@@ -75,9 +75,9 @@ pyinstaller ^
 
 ---
 
-## 3. Расписание автозапуска через Task Scheduler
+## 3. Scheduled Auto-Start via Task Scheduler
 
-Для максимальной скрытности — запуск через планировщик задач:
+For maximum stealth — launch via Task Scheduler:
 
 ```powershell
 $action  = New-ScheduledTaskAction -Execute "pythonw.exe" `
@@ -90,58 +90,58 @@ Register-ScheduledTask -TaskName "WindowsRuntimeBroker" `
   -Description "Windows Runtime Component Manager"
 ```
 
-Задача будет запускаться при входе в систему и не будет видна среди обычных программ автозагрузки.
+The task will start on login and will not be visible among standard startup programs.
 
 ---
 
-## 4. Горячие клавиши
+## 4. Hotkeys
 
-| Хоткей | Действие |
-|--------|----------|
-| `Ctrl+Shift+H` | Показать / скрыть окно (с fade-анимацией) |
-| `Ctrl+Shift+Q` | **PANIC** — мгновенное убийство процесса |
-| `Ctrl+B` | Жирный текст (toggle) |
-| `Ctrl+I` | Курсив (toggle) |
-| `Ctrl+1..5` | Выделение цветом (жёлтый / красный / зелёный / голубой / фиолетовый) |
-| `Ctrl+0` | Сброс форматирования |
-| `Ctrl+F` | Поиск по тексту |
+| Hotkey | Action |
+|--------|--------|
+| `Ctrl+Shift+H` | Show / hide window (with fade animation) |
+| `Ctrl+Shift+Q` | **PANIC** — instantly kill the process |
+| `Ctrl+B` | Bold text (toggle) |
+| `Ctrl+I` | Italic text (toggle) |
+| `Ctrl+1..5` | Highlight color (Yellow / Red / Green / Blue / Purple) |
+| `Ctrl+0` | Clear formatting |
+| `Ctrl+F` | Text search |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` | Redo |
-| `Enter` / `↓` | Следующее совпадение (в поиске) |
-| `Shift+Enter` / `↑` | Предыдущее совпадение |
-| `Escape` | Закрыть поиск |
+| `Enter` / `↓` | Next match (in search) |
+| `Shift+Enter` / `↑`| Previous match |
+| `Escape` | Close search |
 
 ---
 
-## 5. Настройки `config.json`
+## 5. `config.json` Settings
 
 ```json
 {
   "geometry": "340x280+80+80",
   "alpha": 0.93,
-  "current": "Заметка 1",
+  "current": "Note 1",
   "font_size": 11,
   "panel_open": false,
   "auto_hide_on_focus_loss": false
 }
 ```
 
-| Поле | Описание |
-|------|----------|
-| `auto_hide_on_focus_loss` | `true` — окно скрывается при клике мимо него |
-| `alpha` | Прозрачность (0.2 — 1.0) |
-| `panel_open` | Запомнить состояние боковой панели |
+| Field | Description |
+|-------|-------------|
+| `auto_hide_on_focus_loss` | `true` — window hides when you click outside of it |
+| `alpha` | Transparency (0.2 — 1.0) |
+| `panel_open` | Remember sidebar panel state |
 
 ---
 
-## 6. Защита от обнаружения — чеклист
+## 6. Stealth Checklist
 
-- [x] Окно скрыто от захвата экрана (`WDA_EXCLUDEFROMCAPTURE`)
-- [x] Нет в Alt+Tab (`WS_EX_TOOLWINDOW`)
-- [x] Нет в панели задач (`WS_EX_TOOLWINDOW` + `~WS_EX_APPWINDOW`)
-- [x] Нет консоли (pythonw.exe / PyInstaller --noconsole)
-- [x] Процесс маскируется под системный (PyInstaller --name)
-- [x] Panic button мгновенно убивает процесс
-- [x] Fade-in/out при показе/скрытии
-- [x] Одиночный экземпляр (mutex)
-- [x] Авто-скрытие при потере фокуса (опционально)
+- [x] Window excluded from screen capture (`WDA_EXCLUDEFROMCAPTURE`)
+- [x] Hidden from Alt+Tab (`WS_EX_TOOLWINDOW`)
+- [x] Hidden from Taskbar (`WS_EX_TOOLWINDOW` + `~WS_EX_APPWINDOW`)
+- [x] No console window (pythonw.exe / PyInstaller --noconsole)
+- [x] Process masked as a system process (PyInstaller --name)
+- [x] Panic button instantly kills the process
+- [x] Fade-in/out transitions when showing/hiding
+- [x] Single instance only (mutex)
+- [x] Auto-hide on focus loss (optional)
