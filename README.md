@@ -27,7 +27,7 @@ To launch the application in full stealth mode (process masking + no console win
 1. Double-click **`launch.vbs`**.
 2. The application will start silently.
 
-*Alternatively, you can build the application into a standalone executable using PyInstaller. See `BUILD.md` for detailed build instructions.*
+*Alternatively, you can build the application into a standalone executable using PyInstaller. See [BUILD.md](https://github.com/l-limon-l/ShadowPad/blob/main/BUILD.md) for detailed build instructions.*
 
 ## ⌨️ Shortcuts & Controls
 
