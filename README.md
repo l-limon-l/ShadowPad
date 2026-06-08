@@ -7,6 +7,9 @@
 ## ✨ Key Features
 
 *   **Absolute Invisibility**: Utilizes Windows native `WDA_EXCLUDEFROMCAPTURE` flags. The application window (and all its tooltips/menus) is invisible to screen capture software (Snipping Tool, OBS, Teams, Zoom, etc.).
+*   **Encrypted Storage**: All notes are heavily encrypted on the disk using Fernet symmetric encryption.
+*   **Filename Obfuscation**: Note filenames are randomized UUIDs. Someone looking at your `notes` directory won't be able to tell how many notes you have, what they are called, or what they contain.
+*   **Recovery Key Security**: Upon first launch, the app generates a high-entropy encryption key. If you ever lose your local configuration, you can use this key to restore your notes.
 *   **Process Masking**: Includes a stealth launcher (`launch.vbs`) that runs the application under a system-like process name (`RuntimeBroker.exe`), hiding the fact that Python is running.
 *   **Panic Key (`Ctrl+Shift+Q`)**: A global hardware-level hotkey that instantly wipes the current note from memory and kills the process without any trace.
 *   **Toggle Visibility (`Ctrl+Shift+H`)**: A global hotkey to instantly hide or reveal the note window.
@@ -16,11 +19,20 @@
 *   **Adjustable Opacity**: Tweak the transparency of the window on the fly.
 *   **Always on Top**: Keeps your notes above all other windows.
 
+## 🔒 Security & Encryption (IMPORTANT)
+
+Upon your first launch, the app will generate a secure **Recovery Key**. 
+1. This key is used to encrypt your notes securely on your hard drive.
+2. The key is saved locally in a hidden file called `config.key` so you don't have to enter it every time.
+3. You can click the 🔑 button in the app to view and copy your Recovery Key.
+4. **SAVE THIS KEY SOMEWHERE SAFE.** If you move your notes to a new computer or accidentally delete `config.key`, your notes will be unreadable. To recover them, launch the app and paste your Recovery Key when prompted!
+
 ## 🚀 How to Run
 
 ### Requirements
 *   Windows 10/11
 *   Python 3.x
+*   `cryptography` package (`pip install cryptography`)
 
 ### Launching Stealthily
 To launch the application in full stealth mode (process masking + no console window):

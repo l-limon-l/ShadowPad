@@ -6,6 +6,14 @@ import sys
 import gc
 import json
 import threading
+import uuid
+import base64
+import locale
+from cryptography.fernet import Fernet
+
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
 
 
 GWL_EXSTYLE             = -20
@@ -143,13 +151,128 @@ if ctypes.windll.kernel32.GetLastError() == 183:
 
 
 
+def get_sys_lang():
+    try:
+        lang, _ = locale.getdefaultlocale()
+        if lang and lang.startswith('ru'):
+            return 'ru'
+    except Exception:
+        pass
+    return 'en'
+
+LANG = get_sys_lang()
+
+STRINGS = {
+    'ru': {
+        'recovery_title': "Ключ восстановления",
+        'generated_msg': "Сгенерирован ключ для шифрования заметок.\nОБЯЗАТЕЛЬНО сохраните его!\n(Если вы восстанавливаете старые заметки, вставьте старый ключ)",
+        'copy': "Копировать",
+        'continue': "Продолжить / Восстановить",
+        'copied': "Ключ скопирован в буфер обмена!",
+        'current_key': "Ваш текущий ключ восстановления:",
+        'close': "Закрыть",
+        'key_not_found': "Ключ не найден",
+        'tooltip_key': "Ключ восстановления",
+        'tooltip_lock': "Блокировка редактирования",
+        'notes_title': "Заметки",
+        'new_name': "Новое имя:",
+    },
+    'en': {
+        'recovery_title': "Recovery Key",
+        'generated_msg': "An encryption key has been generated for your notes.\nMake sure to SAVE IT!\n(If you are restoring old notes, paste your old key here)",
+        'copy': "Copy",
+        'continue': "Continue / Restore",
+        'copied': "Key copied to clipboard!",
+        'current_key': "Your current recovery key:",
+        'close': "Close",
+        'key_not_found': "Key not found",
+        'tooltip_key': "Recovery Key",
+        'tooltip_lock': "Lock Editing",
+        'notes_title': "Notes",
+        'new_name': "New name:",
+    }
+}
+
+def _(key):
+    return STRINGS[LANG].get(key, STRINGS['en'].get(key, key))
+
 class StickyNote:
 
+    def _init_encryption(self):
+        key_path = os.path.join(BASE_DIR, 'config.key')
+        if not os.path.exists(key_path):
+            temp_root = tk.Tk()
+            temp_root.withdraw()
+            
+            dialog = tk.Toplevel(temp_root)
+            dialog.title(_('recovery_title'))
+            dialog.attributes('-topmost', True)
+            dialog.geometry("450x230")
+            dialog.configure(bg=C['surf3'])
+            dialog.resizable(False, False)
+            
+            x = temp_root.winfo_screenwidth() // 2 - 225
+            y = temp_root.winfo_screenheight() // 2 - 115
+            dialog.geometry(f"+{x}+{y}")
+            
+            new_key = Fernet.generate_key().decode('utf-8')
+            
+            lbl = tk.Label(dialog, text=_('generated_msg'),
+                     bg=C['surf3'], fg=C['ink'], font=F_BODY)
+            lbl.pack(pady=(15, 5))
+            
+            key_var = tk.StringVar(value=new_key)
+            entry = tk.Entry(dialog, textvariable=key_var, font=('Segoe UI', 10), bg=C['surf1'], fg=C['ink'], insertbackground=C['ink'], relief='flat')
+            entry.pack(fill='x', padx=20, pady=5)
+            
+            result = [None]
+            
+            def on_copy():
+                dialog.clipboard_clear()
+                dialog.clipboard_append(key_var.get())
+                lbl.config(text=_('copied'))
+                
+            def on_continue(e=None):
+                result[0] = key_var.get().encode('utf-8')
+                dialog.destroy()
+                temp_root.destroy()
+                
+            btn_frame = tk.Frame(dialog, bg=C['surf3'])
+            btn_frame.pack(pady=15)
+            
+            tk.Button(btn_frame, text=_('copy'), command=on_copy, bg=C['surf2'], fg=C['ink'], relief='flat', font=F_BODY, padx=10).pack(side='left', padx=10)
+            tk.Button(btn_frame, text=_('continue'), command=on_continue, bg=C['primary'], fg='#ffffff', relief='flat', font=F_BODY, padx=10).pack(side='left', padx=10)
+            
+            entry.bind('<Return>', on_continue)
+            
+            dialog.wait_window()
+            
+            if result[0] is None: 
+                sys.exit(0)
+                
+            key = result[0]
+            with open(key_path, 'wb') as f:
+                f.write(key)
+            try:
+                ctypes.windll.kernel32.SetFileAttributesW(key_path, 0x02) 
+            except Exception:
+                pass
+        else:
+            with open(key_path, 'rb') as f:
+                key = f.read()
+        
+        try:
+            self.cipher = Fernet(key)
+        except Exception:
+            os.remove(key_path)
+            sys.exit(0)
+
     def __init__(self):
+        self._init_encryption()
         self.config          = self._load_config()
         self.current         = self.config.get('current', 'Note 1')
         self._visible        = True
-        self._panel_open     = self.config.get('panel_open', False)
+        self._panel_open     = self.config.get('panel_open', True)
         self._search_open    = False
         self._search_matches = []
         self._search_idx     = -1
@@ -165,11 +288,12 @@ class StickyNote:
         self.root.attributes('-topmost', True)
         self._target_alpha = self.config.get('alpha', 0.93)
         self.root.attributes('-alpha', self._target_alpha)
-        self.root.geometry(self.config.get('geometry', '340x280+80+80'))
+        self.root.geometry(self.config.get('geometry', '500x300+80+80'))
         self.root.configure(bg=C['canvas'])
 
         self._enum_cb = self._make_enum_callback()
 
+        self._note_files = {}
         self._migrate_notes()
         self._build_ui()
         self._init_text_tags()
@@ -246,8 +370,12 @@ class StickyNote:
 
         self._locked = False
         self.lock_btn = self._label_btn(self.bar, '✎', self._toggle_lock,
-                                        tip='Блокировка редактирования')
+                                        tip=_('tooltip_lock'))
         self.lock_btn.pack(side='right')
+
+        self.key_btn = self._label_btn(self.bar, '🔑', self._show_recovery_key_dialog,
+                                        tip=_('tooltip_key'))
+        self.key_btn.pack(side='right')
 
         for w in (self.bar, self.title_lbl):
             w.bind('<ButtonPress-1>', self._drag_start)
@@ -685,7 +813,7 @@ class StickyNote:
     def _build_panel(self):
         hdr = tk.Frame(self.panel, bg=C['canvas'])
         hdr.pack(fill='x')
-        tk.Label(hdr, text='Заметки', bg=C['canvas'], fg=C['ink_m'],
+        tk.Label(hdr, text=_('notes_title'), bg=C['canvas'], fg=C['ink_m'],
                  font=F_BOLD, pady=9).pack(side='left', padx=10)
 
         add = tk.Label(hdr, text='+', bg=C['canvas'], fg=C['ink_s'],
@@ -843,17 +971,17 @@ class StickyNote:
         return ''.join(c if (c.isalnum() or c in ' _-') else '_' for c in name)
 
     def _note_path(self, name):
-        return os.path.join(NOTES_DIR, self._safe_name(name) + '.json')
+        filename = self._note_files.get(name)
+        if not filename:
+            filename = uuid.uuid4().hex + '.json'
+            self._note_files[name] = filename
+        return os.path.join(NOTES_DIR, filename)
 
     def _list_notes(self):
-        names = set()
-        for f in os.listdir(NOTES_DIR):
-            if f.endswith('.json'):
-                names.add(f[:-5])
-        return sorted(names)
+        return sorted(self._note_files.keys())
 
     def _migrate_notes(self):
-        """One-time migration: .txt → .json (keeps .txt as backup)."""
+        # 1. txt -> plain json
         for f in os.listdir(NOTES_DIR):
             if not f.endswith('.txt'):
                 continue
@@ -866,28 +994,70 @@ class StickyNote:
                 with open(txt_p, 'r', encoding='utf-8') as fh:
                     content = fh.read()
                 with open(json_p, 'w', encoding='utf-8') as fh:
-                    json.dump({'text': content, 'tags': []}, fh,
-                              ensure_ascii=False)
+                    json.dump({'text': content, 'tags': []}, fh, ensure_ascii=False)
+            except Exception:
+                pass
+        
+        # 2. plain json -> encrypted json
+        for f in os.listdir(NOTES_DIR):
+            if not f.endswith('.json'):
+                continue
+            path = os.path.join(NOTES_DIR, f)
+            try:
+                with open(path, 'rb') as fh:
+                    data = fh.read()
+                try:
+                    plain_json = json.loads(data.decode('utf-8'))
+                    name = f[:-5]
+                    title = plain_json.get('title', name)
+                    payload = json.dumps({'title': title, 'text': plain_json.get('text', ''), 'tags': plain_json.get('tags', [])})
+                    encrypted = self.cipher.encrypt(payload.encode('utf-8'))
+                    new_filename = uuid.uuid4().hex + '.json'
+                    new_path = os.path.join(NOTES_DIR, new_filename)
+                    with open(new_path, 'wb') as new_fh:
+                        new_fh.write(encrypted)
+                    os.remove(path)
+                except json.JSONDecodeError:
+                    pass
+            except Exception:
+                pass
+
+        # 3. Build index
+        self._note_files.clear()
+        for f in os.listdir(NOTES_DIR):
+            if not f.endswith('.json'):
+                continue
+            path = os.path.join(NOTES_DIR, f)
+            try:
+                with open(path, 'rb') as fh:
+                    data = fh.read()
+                decrypted = self.cipher.decrypt(data)
+                note_data = json.loads(decrypted.decode('utf-8'))
+                title = note_data.get('title')
+                if title:
+                    self._note_files[title] = f
             except Exception:
                 pass
 
     def _ensure_note(self, name):
         p = self._note_path(name)
         if not os.path.exists(p):
-            with open(p, 'w', encoding='utf-8') as f:
-                json.dump({'text': '', 'tags': []}, f, ensure_ascii=False)
+            payload = json.dumps({'title': name, 'text': '', 'tags': []})
+            encrypted = self.cipher.encrypt(payload.encode('utf-8'))
+            with open(p, 'wb') as f:
+                f.write(encrypted)
+            self._note_files[name] = os.path.basename(p)
 
     def _load_note(self, name):
         self._ensure_note(name)
         path = self._note_path(name)
         try:
-            with open(path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            if 'text' not in data:
-                raise ValueError
-        except (json.JSONDecodeError, ValueError, KeyError):
-            with open(path, 'r', encoding='utf-8') as f:
-                data = {'text': f.read(), 'tags': []}
+            with open(path, 'rb') as f:
+                data = f.read()
+            decrypted = self.cipher.decrypt(data)
+            note_data = json.loads(decrypted.decode('utf-8'))
+        except Exception:
+            note_data = {'title': name, 'text': '', 'tags': []}
 
         self.text.config(state='normal')
         self.text.delete('1.0', 'end')
@@ -895,8 +1065,8 @@ class StickyNote:
         for tag in PERSISTENT_TAGS:
             self.text.tag_remove(tag, '1.0', 'end')
 
-        self.text.insert('1.0', data.get('text', ''))
-        self._apply_tags_data(data.get('tags', []))
+        self.text.insert('1.0', note_data.get('text', ''))
+        self._apply_tags_data(note_data.get('tags', []))
         self.text.edit_reset()
 
         if self._locked:
@@ -905,8 +1075,10 @@ class StickyNote:
     def _save_current(self):
         txt  = self.text.get('1.0', 'end-1c')
         tags = self._get_tags_data()
-        with open(self._note_path(self.current), 'w', encoding='utf-8') as f:
-            json.dump({'text': txt, 'tags': tags}, f, ensure_ascii=False)
+        payload = json.dumps({'title': self.current, 'text': txt, 'tags': tags})
+        encrypted = self.cipher.encrypt(payload.encode('utf-8'))
+        with open(self._note_path(self.current), 'wb') as f:
+            f.write(encrypted)
 
     def _get_tags_data(self):
         result = []
@@ -976,7 +1148,7 @@ class StickyNote:
         y = self.root.winfo_rooty() + (self.root.winfo_height() // 2) - 40
         dialog.geometry(f'200x80+{x}+{y}')
         
-        tk.Label(dialog, text='New name:', bg=C['surf3'], fg=C['ink_m'], font=F_BODY).pack(pady=(10, 5))
+        tk.Label(dialog, text=_('new_name'), bg=C['surf3'], fg=C['ink_m'], font=F_BODY).pack(pady=(10, 5))
         entry = tk.Entry(dialog, bg=C['surf1'], fg=C['ink'], font=F_BODY, insertbackground=C['ink'], relief='flat')
         entry.pack(fill='x', padx=15)
         entry.insert(0, old_name)
@@ -1018,14 +1190,28 @@ class StickyNote:
         if new_name in existing:
             return
             
-        old_p = self._note_path(old_name)
-        new_p = self._note_path(new_name)
-        if os.path.exists(old_p):
-            os.rename(old_p, new_p)
+        filename = self._note_files.pop(old_name, None)
+        if filename:
+            self._note_files[new_name] = filename
+            path = os.path.join(NOTES_DIR, filename)
             
-        if self.current == old_name:
-            self.current = new_name
-            self.title_var.set(new_name)
+            if self.current == old_name:
+                self.current = new_name
+                self.title_var.set(new_name)
+                self._save_current()
+            else:
+                try:
+                    with open(path, 'rb') as f:
+                        data = f.read()
+                    decrypted = self.cipher.decrypt(data)
+                    note_data = json.loads(decrypted.decode('utf-8'))
+                    note_data['title'] = new_name
+                    payload = json.dumps(note_data)
+                    encrypted = self.cipher.encrypt(payload.encode('utf-8'))
+                    with open(path, 'wb') as f:
+                        f.write(encrypted)
+                except Exception:
+                    pass
             
         self._refresh_list()
 
@@ -1033,6 +1219,9 @@ class StickyNote:
         p = self._note_path(name)
         if os.path.exists(p):
             os.remove(p)
+        if name in self._note_files:
+            del self._note_files[name]
+            
         notes = self._list_notes()
         if name == self.current:
             if not notes:
@@ -1320,6 +1509,55 @@ class StickyNote:
         self._flush_save()
         self._save_config()
         self.root.destroy()
+
+    def _show_recovery_key_dialog(self):
+        key_path = os.path.join(BASE_DIR, 'config.key')
+        try:
+            with open(key_path, 'rb') as f:
+                current_key = f.read().decode('utf-8')
+        except Exception:
+            current_key = _('key_not_found')
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title(_('recovery_title'))
+        dialog.attributes('-topmost', True)
+        dialog.geometry("450x180")
+        dialog.configure(bg=C['surf3'])
+        dialog.resizable(False, False)
+        
+        x = self.root.winfo_rootx() + (self.root.winfo_width() // 2) - 225
+        y = self.root.winfo_rooty() + (self.root.winfo_height() // 2) - 90
+        dialog.geometry(f"+{x}+{y}")
+        
+        lbl = tk.Label(dialog, text=_('current_key'),
+                 bg=C['surf3'], fg=C['ink'], font=F_BODY)
+        lbl.pack(pady=(15, 5))
+        
+        key_var = tk.StringVar(value=current_key)
+        entry = tk.Entry(dialog, textvariable=key_var, font=('Segoe UI', 10), bg=C['surf1'], fg=C['ink'], insertbackground=C['ink'], relief='flat')
+        entry.pack(fill='x', padx=20, pady=5)
+        entry.config(state='readonly')
+        
+        def on_copy():
+            dialog.clipboard_clear()
+            dialog.clipboard_append(current_key)
+            lbl.config(text=_('copied'))
+            
+        def on_close():
+            dialog.destroy()
+            
+        btn_frame = tk.Frame(dialog, bg=C['surf3'])
+        btn_frame.pack(pady=15)
+        
+        tk.Button(btn_frame, text=_('copy'), command=on_copy, bg=C['primary'], fg='#ffffff', relief='flat', font=F_BODY, padx=10).pack(side='left', padx=10)
+        tk.Button(btn_frame, text=_('close'), command=on_close, bg=C['surf2'], fg=C['ink'], relief='flat', font=F_BODY, padx=10).pack(side='left', padx=10)
+        
+        try:
+            hwnd = ctypes.windll.user32.GetAncestor(dialog.winfo_id(), GA_ROOT)
+            if not ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE):
+                ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, WDA_MONITOR)
+        except Exception:
+            pass
 
     def run(self):
         self.root.mainloop()
